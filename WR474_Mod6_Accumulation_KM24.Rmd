@@ -1,0 +1,191 @@
+
+# Assignment 6 Snow Accumulation
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Methods
+
+1.  Import the data from Iowa Mesonet and NRCS Snotel Data access sites.
+
+2.  Clean the ASOS data: change the date class to POSIXct, aggregate to the hourly time step, create a month column.
+
+3.  Clean the SNOTEL data: rename variables, select for date, swe, snow depth, precip accumulation, incrament precip, and average air temp in celsius, and converted precip to mm.
+
+4.  Calculate density using the Hedstrom-Pomeroy equation and average air temperature in degrees Celsius.
+
+5.  Filtered density dataset to include only values during periods of snow, so when temperature is less than zero and precip is greater than one.
+
+6.  Group density by both hourly and monthly parameters.
+
+7.  Convert density from a percentage to a decimal value and divided precip by density to determine hourly snowfall.
+
+8.  Used cumsum to create a cumulative sum of hourly snowfall for 2024 and plotted next to SNOTEL snow depth.
+
+9.  Calculated albedo with the following given parameters:
+
+    "Estimate and plot the albedo on an hourly basis. State the assumption for the albedo for soil when there is no snow accumulated. Use a fresh snow albedo of 0.84, and the first order exponential function to model albedo. After a snowfall without melting allow albedo to decay to 0.70 and to 0.50 during melt, i.e., T \> 0oC."
+
+    **Key Assumption:** I assume that when air temperature has been 0 or below for three days and when precipitation is occurring that snow is accumulating. October 13th at 1:00am in the morning is when there is complete snow cover at Berthoud Summit station.
+
+## Results
+
+```{r load, echo=FALSE}
+
+library(tidyverse)
+library(plotly)
+library(lubridate)
+
+ASOS <- read.csv("Data/asosclean_metamorphism.csv")
+
+```
+
+1)  Fresh snow: Estimate the hourly density of the fresh snow added to the snowpack (i.e., when it is snowing) using the Hedstrom-Pomeroy or another relevant equation. Plot either the average monthly fresh snow density or the hourly fresh snow density; and estimate and plot the net (cumulative) hourly snow depth without metamorphism, also known as snowfall.
+
+```{r density, echo=FALSE}
+density <- ASOS %>% 
+  mutate(Date = as.Date(Date, format = "%m/%d/%Y"),
+         month = month(Date, label = TRUE))%>% 
+  filter(month != "Sep") %>%
+  mutate(density = 67.92 + 51.25*exp(tmpc/2.59)) %>% 
+  filter(month %in% c("Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "June"))
+
+density_filtered <- density %>% 
+  filter(tmpc <= 0,
+         p01mm > 0)
+
+hourly_density_filtered <- ggplot(density_filtered) +
+  geom_line(aes(x = Date, y = density), color = "slateblue")+
+  labs(
+    title = "Hourly Fresh Snow Density",
+    x = "Date", 
+    y = "Density (kg/m^3)",
+    caption = str_wrap("Figure 1. Hourly fresh snow density in Berthoud Pass for the water year 2024. Data gathered from the Berthoud Pass ASOS Station.", width = 60)
+  )+
+  theme_classic()
+
+hourly_density_filtered
+
+month_density <- density_filtered %>%
+  group_by(month) %>% 
+  summarize(avg_density = mean(density)) %>% 
+  ggplot()+
+  geom_col(aes(x = month, y = avg_density))+
+  labs(
+    title = "Average Monthly Fresh Snow Density",
+    x = "Month",
+    y = "Average Density (kg/m^3)",
+    caption = str_wrap("Figure 2. Average monthly fresh snow density in Berthoud Pass for the water year 2024. Data gathered from the Berthoud Pass ASOS station.", width = 60)
+  ) +
+  theme_classic()
+  
+month_density
+
+#cumulative hourly snow depth without metamorphism as snowfall
+sum_hsnowdepth <- density_filtered %>%
+  mutate(p01m = p01mm * .001,
+         density_decimal = density/100,
+         hsd = p01m/density_decimal,
+         cum_hsd = cumsum(hsd))
+
+ggplot(sum_hsnowdepth)+
+  geom_line(aes(x = Date, y = cum_hsd), color = "slateblue")+
+  labs(
+    x = "Date",
+    y = "Cumulative Hourly Snowfall (mm)",
+    title = "Cumulative Hourly Snowfall Snowyear 2024",
+    caption = str_wrap("Figure 3. Cumulative snowfall calculated from density and precipitation measurements at Berthoud ASOS Station for the snowyear 2024.", width = 70)
+  )+
+  theme_classic()
+```
+
+1)  Snow Depth: From the daily SNOTEL snow depth data, compute the cumulative "snowfall," i.e., the sum of all positive snow depth amounts. On the same graph, compare the computed snowfall to the amount of snow measured on the ground (observed snow depth).
+
+```{r depth, echo=FALSE}
+#switch to snotel, plot cumulative depth vs observed depth
+
+SNOTEL <- read.csv("Data/SNOTEL_Berthoud.csv")
+
+SNOTEL_clean <- SNOTEL %>% 
+  rename(swe_m = Snow.Water.Equivalent..m.,
+         snow_depth_obs = Snow.Depth..m.,
+         p_accumulation_m = Precipitation.Accumulation..m.,
+         p_increment_m = Precipitation.Increment..m.,
+         p_mtd_m = Precipitation.Month.to.date..m.,
+         airtemp_avg_c = Air.Temperature.Average..degC.,
+         date = Date,
+         snow_density = Snow.Density) %>% 
+  mutate(date = as.Date(date, format = "%m/%d/%Y"))
+
+depth_calculations <- SNOTEL_clean %>% 
+  mutate(snowfall = (Precipitation.Increment..in.*25.4)/(snow_density*10), #pct density * 10? 
+         cumsumpoopy = (cumsum(replace_na(snowfall,0))))
+
+ggplot(depth_calculations) +
+  geom_line(aes(x = date, y = cumsumpoopy, color = "Calculated"))+
+  geom_line(aes(x = date, y = snow_depth_obs, color = "Observed"))+
+  scale_color_manual(values = c("Calculated" = "slateblue", "Observed" = "forestgreen"))+
+  labs(
+    x = "Date",
+    y = "Snow Depth (m)",
+    title = "Calculated vs Observed Snowdepth Berthoud Snowpass",
+    colour = "Legend",
+    caption = str_wrap("Figure 4. Snowdepth as calculated and as observed. Calculation does not take metamorphism into account. Data from Berthoud Snowpass.", width = 50)
+  )+
+  theme_classic()
+
+
+```
+
+1)  Albedo: Estimate and plot the albedo on an hourly basis. State the assumption for the albedo for soil when there is no snow accumulated. Use a fresh snow albedo of 0.84, and the first order exponential function to model albedo. After a snowfall without melting allow albedo to decay to 0.70 and to 0.50 during melt, i.e., T \> 0oC.
+
+```{r albedo, echo=FALSE}
+#Create albedo_df with required columns
+albedo_df <- ASOS %>%
+  select(Date, Time, tmpc, p01mm) %>% 
+  mutate(Date = as.Date(Date, format = "%m/%d/%Y")) %>% 
+  rename(precip_m = p01mm)
+  #select(date = hour, precip_m = p01i, tobs_c = temp_c)
+
+# Calculate change in precipitation between hours
+albedo_df <- albedo_df %>%
+  mutate(precip_change_m = precip_m - lag(precip_m, default = first(precip_m)))
+
+# Initialize albedo column, starting albedo at 0.5
+albedo_df$albedo <- NA_real_
+albedo_df$albedo[1] <- 0.5
+
+# Loop to calculate albedo based on conditions
+for (i in 2:nrow(albedo_df)) {
+  
+  if (!is.na(albedo_df$precip_change_m[i]) && !is.na(albedo_df$tmpc[i])) {
+    if (albedo_df$precip_change_m[i] > 0 && albedo_df$tmpc[i] <= 0) {
+      # Fresh snow: set albedo to 0.84
+      albedo_df$albedo[i] <- 0.84
+    } else if (albedo_df$precip_change_m[i] == 0 && albedo_df$tmpc[i] >= 0) {
+      # Melting condition: decay albedo towards 0.50
+      albedo_df$albedo[i] <- (albedo_df$albedo[i - 1] - 0.5) * exp(-0.01) + 0.5
+    } else if (albedo_df$precip_change_m[i] == 0 && albedo_df$tmpc[i] < 0 && albedo_df$albedo[i - 1] > 0.7) {
+      # Non-melting condition: decay albedo towards 0.70
+      albedo_df$albedo[i] <- (albedo_df$albedo[i - 1] - 0.7) * exp(-0.01) + 0.7
+    } else {
+      # Keep previous albedo value
+      albedo_df$albedo[i] <- albedo_df$albedo[i - 1]
+    }
+  } else {
+    # If there are NAs in the data, retain the previous albedo value
+    albedo_df$albedo[i] <- albedo_df$albedo[i - 1]
+  }
+}
+
+# Plot the albedo over time
+ggplot(albedo_df, aes(x = Date, y = albedo)) +
+  geom_line(color = "slateblue") +
+  scale_x_date(date_breaks = "1 months", date_labels = "%b") +
+  labs(x = "Date",
+       y = "Albedo",
+       title = "Albedo over Time",
+       caption = str_wrap("Figure 5. Albedo for water year 2024 from Berthoud Pass ASOS station measurements.", width = 70)) +
+  scale_y_continuous(limits = c(0.5, NA))+
+  theme_classic()
+```

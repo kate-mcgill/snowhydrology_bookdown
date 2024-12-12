@@ -1,0 +1,16 @@
+---
+title: "Snow Balance Bookdown"
+author: "Kate McGill"
+date: "`r Sys.Date()`"
+site: bookdown::bookdown_site
+output: bookdown::gitbook
+documentclass: book
+description: "Coding workflow for snow hydrology balance of Berthoud Snow Pass, CO."
+---
+# Intro {-}
+
+This Bookdown contains code from WR474 Snow Hydrology coursework at Colorado State University, synthesized in one place. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```

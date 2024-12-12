@@ -1,0 +1,8 @@
+assignment-2-data-vizualization
+assignment-4-cloud-cover-data-and-precipitation
+assignment-5-undercatch
+assignment-6-snow-accumulation
+methods
+results
+assignment-8-snow-metamorphism
+assignment-10-sublimation
